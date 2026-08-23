@@ -1,0 +1,65 @@
+# quotapool
+
+> A Go library that limits calls to third-party API providers whose quotas are
+> shared across processes and come in different shapes. Its defining feature is
+> atomic batch admission: a request for N permits reserves all N or none.
+
+quotapool models two independent dimensions per resource — concurrency (a
+distributed semaphore with leases) and rate (a sliding window) — and evaluates
+both in a single atomic step. It targets the case where several service replicas
+share one provider account, so a process-local limiter cannot see the quota the
+rest of the fleet is consuming.
+
+Import path: github.com/laconhub/quotapool
+License: Apache-2.0
+Go: 1.25+
+
+## Core API
+
+- `New(store Store, opts ...Option) *Limiter` — construct a limiter.
+- `(*Limiter).Acquire(ctx, resource string, n int) (Release, error)` — reserve n permits atomically, blocking up to the wait budget.
+- `(*Limiter).TryAcquire(ctx, resource string, n int) (Release, error)` — single non-blocking attempt.
+- `(*Limiter).SetQuota(resource string, q Quota) error` — change limits at runtime.
+- `(*Limiter).Quota(resource string) (Quota, bool)` — read current limits.
+- `(*Limiter).Stats() Stats` — admission counters.
+- `Release` — func() returned by Acquire; idempotent, safe from any goroutine.
+
+## Types
+
+- `Quota{Concurrency int, Rate int, Window time.Duration}` — zero on a dimension means unconstrained; zero value means unlimited.
+- `Store` — two methods, `Acquire(ctx, AcquireRequest) (bool, error)` and `Release(ctx, resource, tokens) error`. Acquire must be atomic across all constrained dimensions.
+- `AcquireRequest{Resource, Quota, Tokens, LeaseTTL, Now}` — one all-or-nothing admission attempt.
+- `Stats{Admitted, Rejected, FailedOpen, FailedClosed, Released, ReleaseFailed uint64}`.
+
+## Stores
+
+- `NewRedisStore(client RedisClient, opts ...RedisStoreOption) *RedisStore` — shared across processes. `RedisClient` is satisfied by go-redis Client, ClusterClient, Ring and UniversalClient. `WithKeyPrefix(string)` namespaces keys.
+- `NewMemoryStore() *MemoryStore` — single process; same semantics, no sharing.
+
+## Options
+
+`WithQuotas(map[string]Quota)`, `WithMaxWait(d)` (default 8s), `WithLeaseTTL(d)`
+(default 30s), `WithBackoff(min, max)` (default 40ms/250ms),
+`WithReleaseTimeout(d)` (default 3s), `WithFailClosed()`, `WithLogger(*slog.Logger)`,
+`WithNowFunc(func() time.Time)`.
+
+## Errors
+
+`ErrQuotaExceeded`, `ErrBatchTooLarge`, `ErrInvalidCount`, `ErrInvalidQuota`.
+Reported only under `WithFailClosed()`; the default policy admits and logs instead.
+
+## Behavioural notes for code generation
+
+- The default failure policy is fail-open: on store error, wait-budget expiry, or an impossible batch, Acquire returns a usable Release and a nil error. Use `WithFailClosed()` when over-admission is worse than blocking.
+- An unregistered resource is unlimited and never reaches the store.
+- Concurrency permits are leased and reclaimed on expiry; rate permits are never released, they age out of the window.
+- `Release` is idempotent; calling it twice is safe. It runs on its own timeout, so it still works after the request context is cancelled.
+- A batch larger than a configured dimension resolves immediately rather than consuming the wait budget.
+- `Limiter` is safe for concurrent use.
+
+## Files
+
+- README.md — English documentation
+- README.zh-CN.md — Chinese documentation
+- examples/basic — quota shapes, both failure policies
+- examples/chorus — why batch admission must be atomic
