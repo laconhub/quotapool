@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test and coverage output
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Profiling output
+*.prof
+*.pprof
+
+# Dependency directory
+vendor/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
