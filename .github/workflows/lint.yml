@@ -27,13 +27,13 @@ jobs:
           go vet -tags=integration ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           args: --timeout 5m
 
       - name: golangci-lint (integration build)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
           args: --timeout 5m --build-tags=integration
